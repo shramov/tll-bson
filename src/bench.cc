@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 #include "bench-scheme.h"
 
 #include <tll/channel.h>

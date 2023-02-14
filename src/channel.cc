@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+
 #include <tll/channel/codec.h>
 #include <tll/channel/module.h>
 
