@@ -1,0 +1,66 @@
+- name: Header
+  enums:
+    Enum1: {type: int8, enum: {A: 0, B: 1, C: 2}}
+  fields:
+    - {name: id0, type: int32}
+    - {name: id1, type: int32}
+    - {name: ts0, type: int64, options: {type: time_point, resolution: us}}
+    - {name: id2, type: int32}
+    - {name: id3, type: int64}
+    - {name: ts1, type: int64, options: {type: time_point, resolution: us}}
+    - {name: e0, type: Enum1}
+    - {name: e1, type: Enum1}
+    - {name: string0, type: byte16, options.type: string}
+    - {name: string1, type: byte32, options.type: string}
+
+- name: Extras
+  fields:
+    - {name: key, type: int32}
+    - {name: value, type: int64}
+
+- name: Trailer
+  fields:
+    - {name: message, type: string}
+    - {name: extras, type: '*Extras'}
+
+- name: Simple
+  id: 10
+  fields:
+    - {name: header, type: Header}
+    - {name: string0, type: byte16, options.type: string}
+    - {name: string1, type: byte32, options.type: string}
+    - {name: string2, type: byte16, options.type: string}
+    - {name: f0, type: int64, options.type: fixed8}
+    - {name: f1, type: int64, options.type: fixed8}
+    - {name: f2, type: int64, options.type: fixed8}
+    - {name: f3, type: int64, options.type: fixed8}
+    - {name: string3, type: byte32, options.type: string}
+    - {name: string4, type: byte16, options.type: string}
+    - {name: trailer, type: Trailer}
+
+- name: Sub
+  fields:
+    - {name: id0, type: int64}
+    - {name: string0, type: byte16, options.type: string}
+    - {name: string1, type: byte32, options.type: string}
+    - {name: decimal, type: decimal128}
+    - {name: id1, type: int64}
+    - {name: ts0, type: int64, options: {type: time_point, resolution: s}}
+
+- name: Nested
+  id: 20
+  fields:
+    - {name: header, type: Header}
+    - {name: string0, type: byte16, options.type: string}
+    - {name: string1, type: byte32, options.type: string}
+    - {name: string2, type: byte16, options.type: string}
+    - {name: f0, type: int64, options.type: fixed8}
+    - {name: f1, type: int64, options.type: fixed8}
+    - {name: f2, type: int64, options.type: fixed8}
+    - {name: f3, type: int64, options.type: fixed8}
+    - {name: string3, type: byte32, options.type: string}
+    - {name: string4, type: byte16, options.type: string}
+    - {name: sub, type: '*Sub'}
+    - {name: string5, type: byte32, options.type: string}
+    - {name: string6, type: byte16, options.type: string}
+    - {name: trailer, type: Trailer}

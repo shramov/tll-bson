@@ -10,11 +10,20 @@ fmt = dependency('fmt')
 bson = dependency('libbson-1.0')
 tll = dependency('tll')
 
-shared_library('tll-bson'
+module = shared_library('tll-bson'
 	, ['src/channel.cc']
 	, include_directories : include
 	, dependencies : [fmt, bson, tll]
 	, install : true
+)
+
+benchmark('bench', executable('bench'
+		, ['src/bench.cc']
+		, include_directories : include
+		, link_with: module
+		, dependencies : [fmt, bson, tll]
+		)
+	, workdir : meson.current_source_dir()
 )
 
 #test('pytest', import('python').find_installation('python3')
