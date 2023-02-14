@@ -9,6 +9,8 @@
 
 extern "C" tll_channel_module_t * channel_module();
 
+static constexpr auto count = 100000u;
+
 using namespace std::chrono;
 
 class Echo : public tll::channel::Base<Echo>
@@ -22,35 +24,10 @@ class Echo : public tll::channel::Base<Echo>
 
 TLL_DEFINE_IMPL(Echo);
 
-int main()
+template <typename Buf>
+void fill_simple(tll_msg_t &msg, Buf &buf)
 {
-	tll::Logger::set("tll", tll::Logger::Warning, true);
-
-	tll::Config ctxcfg;
-	auto ctx = tll::channel::Context(ctxcfg);
-	ctx.reg(&Echo::impl);
-
-	auto m = channel_module();
-	if (m->init)
-		m->init(m, ctx);
-	if (m->impl) {
-		for (auto i = m->impl; *i; i++)
-			ctx.reg(*i);
-	}
-
-	auto bson = ctx.channel("bson+echo://;scheme=yaml://src/bench.yaml;name=bson");
-	if (!bson)
-		return 1;
-	bson->open();
-
-	auto json = ctx.channel("json+echo://;scheme=yaml://src/bench.yaml;name=json");
-	if (!json)
-		return 1;
-	json->open();
-
-	std::vector<char> buf_simple, buf_nested;
-
-	auto simple = Simple::bind(buf_simple);
+	auto simple = Simple::bind(buf);
 	simple.view().resize(simple.meta_size());
 
 	auto header = simple.get_header();
@@ -79,17 +56,52 @@ int main()
 	auto trailer = simple.get_trailer();
 	trailer.set_message("end of simple message");
 
-	tll_msg_t smsg = {};
-	smsg.data = simple.view().data();
-	smsg.size = simple.view().size();
-	smsg.msgid = simple.meta_id();
+	msg.data = simple.view().data();
+	msg.size = simple.view().size();
+	msg.msgid = simple.meta_id();
+}
 
-	bson->post(&smsg);
-	json->post(&smsg);
+void bench(tll::channel::Context &ctx, std::string_view proto)
+{
+	std::vector<char> buf;
+	tll_msg_t msg = {};
+	fill_simple(msg, buf);
 
-	static constexpr auto count = 100000u;
+	tll::Channel::Url url;
+	url.proto(proto);
+	url.set("scheme", scheme_string);
+	url.set("name", "codec");
+
+	auto c = ctx.channel(url);
+	if (!c)
+		return;
+	c->open();
+	if (c->state() != tll::state::Active)
+		return;
+
+	c->post(&msg);
+	tll::bench::timeit(count, proto, tll_channel_post, c.get(), &msg, 0);
+}
+
+int main()
+{
+	tll::Logger::set("tll", tll::Logger::Warning, true);
+
+	tll::Config ctxcfg;
+	auto ctx = tll::channel::Context(ctxcfg);
+	ctx.reg(&Echo::impl);
+
+	auto m = channel_module();
+	if (m->init)
+		m->init(m, ctx);
+	if (m->impl) {
+		for (auto i = m->impl; *i; i++)
+			ctx.reg(*i);
+	}
 
 	tll::bench::prewarm(100ms);
-	tll::bench::timeit(count, "bson simple", tll_channel_post, bson.get(), &smsg, 0);
-	tll::bench::timeit(count, "json simple", tll_channel_post, json.get(), &smsg, 0);
+	bench(ctx, "bson+null");
+	bench(ctx, "json+null");
+	bench(ctx, "bson+echo");
+	bench(ctx, "json+echo");
 }
