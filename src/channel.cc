@@ -397,7 +397,7 @@ bool BSON::_decode(bson_iter_t * iter, const tll::scheme::Field * field, Buf dat
 			if (len > field->size)
 				return _log.fail(false, "String for field {} is too long: {} > max {}", field->name, len, field->size);
 			memcpy(data.data(), str, len);
-	 	} else if (t == BSON_TYPE_BINARY) {
+		} else if (t == BSON_TYPE_BINARY) {
 			if (field->sub_type == Field::ByteString)
 				return _log.fail(false, "Invalid BSON type for string {}: {}", field->name, t);
 			uint32_t len;

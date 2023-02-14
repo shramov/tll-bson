@@ -7,7 +7,7 @@ import bson
 
 from tll.test_util import Accum
 
-@pytest.mark.parametrize("t,value", 
+@pytest.mark.parametrize("t,value",
         [('int8', -123),
         ('int16', -12323),
         ('int32', -123123),
