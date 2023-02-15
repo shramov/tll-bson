@@ -102,6 +102,8 @@ int main()
 	}
 
 	tll::bench::prewarm(100ms);
+	bench(ctx, "null");
+	bench(ctx, "echo");
 	bench(ctx, "bson+null");
 	bench(ctx, "json+null");
 	bench(ctx, "bson+echo");
