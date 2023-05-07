@@ -4,6 +4,7 @@
 import pytest
 
 import bson
+from decimal import Decimal
 
 from tll.test_util import Accum
 
@@ -16,6 +17,7 @@ from tll.test_util import Accum
         ('uint16', 54321),
         ('uint32', 123123123),
         ('double', 123.123),
+        ('decimal128', Decimal("123.123")),
         ('string', 'text'),
         ('byte8', b'blob\0\0\0\0'),
         ('byte8, options.type: string', 'text'),
@@ -34,6 +36,10 @@ def test_field(context, t, value):
     r = Accum('direct://', name='raw', context=context)
     r.open()
 
+    bvalue = value
+    if isinstance(value, Decimal):
+        bvalue = bson.Decimal128(value)
+
     scheme = f'''yamls://
 - name: Sub
   fields:
@@ -45,14 +51,14 @@ def test_field(context, t, value):
   fields:
     - {{name: f0, type: {t}}}
 '''
-    c = Accum('bson+direct://;null.dump=text+hex;name=bson', master=r, scheme=scheme, context=context)
+    c = Accum('bson+direct://;direct.dump=text+hex;name=bson', master=r, scheme=scheme, context=context)
     c.open()
 
     assert c.state == c.State.Active
 
     c.post({'f0': value}, name='Data', seq=100)
     d = bson.decode(r.result[-1].data)
-    assert d == {'_tll_name': 'Data', '_tll_seq': 100, 'f0': value}
+    assert d == {'_tll_name': 'Data', '_tll_seq': 100, 'f0': bvalue}
 
     d['_tll_seq'] = 200
     r.post(bson.encode(d))
