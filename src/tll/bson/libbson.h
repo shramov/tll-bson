@@ -207,7 +207,7 @@ bool Decoder::decode_scalar(bson_iter_t * iter, const tll::scheme::Field * field
 	} else if (t == BSON_TYPE_INT64) {
 		v = bson_iter_int64_unsafe(iter);
 	} else
-		return fail(false, "Invalid TLL_UTIL_BSON type for integer: {}", t);
+		return fail(false, "Invalid BSON type for integer: {}", t);
 	if constexpr (std::is_same_v<T, uint64_t>) {
 		if (v < 0)
 			return fail(false, "Negative value for unsigned field: {}", v);
@@ -252,12 +252,12 @@ bool Decoder::decode(bson_iter_t * iter, const tll::scheme::Field * field, Buf d
 		else if (t == BSON_TYPE_INT64)
 			*data.template dataT<double>() = bson_iter_int64_unsafe(iter);
 		else
-			return fail(false, "Invalid TLL_UTIL_BSON type for double: {}", t);
+			return fail(false, "Invalid BSON type for double: {}", t);
 		return true;
 	}
 	case Field::Decimal128:
 		if (t != BSON_TYPE_DECIMAL128)
-			return fail(false, "Invalid TLL_UTIL_BSON type for decimal128: {}", t);
+			return fail(false, "Invalid BSON type for decimal128: {}", t);
 		bson_iter_decimal128_unsafe(iter, data.template dataT<bson_decimal128_t>());
 		return true;
 
@@ -270,7 +270,7 @@ bool Decoder::decode(bson_iter_t * iter, const tll::scheme::Field * field, Buf d
 			memcpy(data.data(), str, len);
 		} else if (t == BSON_TYPE_BINARY) {
 			if (field->sub_type == Field::ByteString)
-				return fail(false, "Invalid TLL_UTIL_BSON type for string: {}", t);
+				return fail(false, "Invalid BSON type for string: {}", t);
 			uint32_t len;
 			const uint8_t * ptr;
 			bson_subtype_t sub;
@@ -279,19 +279,19 @@ bool Decoder::decode(bson_iter_t * iter, const tll::scheme::Field * field, Buf d
 				return fail(false, "Binary data too long: {} > max {}", len, field->size);
 			memcpy(data.data(), ptr, len);
 		} else
-			return fail(false, "Invalid TLL_UTIL_BSON type for bytes: {}", t);
+			return fail(false, "Invalid BSON type for bytes: {}", t);
 		return true;
 
 	case Field::Array: {
 		if (t != BSON_TYPE_ARRAY)
-			return fail(false, "Invalid TLL_UTIL_BSON type for array: {}", t);
+			return fail(false, "Invalid BSON type for array: {}", t);
 
 		const uint8_t * array;
 		uint32_t len;
 		bson_iter_array(iter, &len, &array);
 		bson_iter_t child;
 		if (!bson_iter_init_from_data(&child, array, len))
-			return fail(false, "Failed to init TLL_UTIL_BSON array iterator");
+			return fail(false, "Failed to init BSON array iterator");
 		unsigned count = 0;
 		while (bson_iter_next (&child)) {
 			count++;
@@ -310,7 +310,7 @@ bool Decoder::decode(bson_iter_t * iter, const tll::scheme::Field * field, Buf d
 		ptr.offset = data.size();
 		if (field->sub_type == Field::ByteString) {
 			if (t != BSON_TYPE_UTF8)
-				return fail(false, "Invalid TLL_UTIL_BSON type for string: {}", t);
+				return fail(false, "Invalid BSON type for string: {}", t);
 			size_t len;
 			auto str = bson_iter_utf8_unsafe(iter, &len);
 			ptr.size = len + 1;
@@ -323,13 +323,13 @@ bool Decoder::decode(bson_iter_t * iter, const tll::scheme::Field * field, Buf d
 			return true;
 		}
 		if (t != BSON_TYPE_ARRAY)
-			return fail(false, "Invalid TLL_UTIL_BSON type for array: {}", t);
+			return fail(false, "Invalid BSON type for array: {}", t);
 		const uint8_t * array;
 		uint32_t len;
 		bson_iter_array(iter, &len, &array);
 		bson_iter_t child;
 		if (!bson_iter_init_from_data(&child, array, len))
-			return fail(false, "Failed to init TLL_UTIL_BSON array iterator");
+			return fail(false, "Failed to init BSON array iterator");
 		while (bson_iter_next (&child))
 			ptr.size++;
 
@@ -345,14 +345,14 @@ bool Decoder::decode(bson_iter_t * iter, const tll::scheme::Field * field, Buf d
 	}
 	case Field::Message: {
 		if (t != BSON_TYPE_DOCUMENT)
-			return fail(false, "Invalid TLL_UTIL_BSON type for message: {}", t);
+			return fail(false, "Invalid BSON type for message: {}", t);
 
 		const uint8_t * array;
 		uint32_t len;
 		bson_iter_document(iter, &len, &array);
 		bson_iter_t child;
 		if (!bson_iter_init_from_data(&child, array, len))
-			return fail(false, "Failed to init TLL_UTIL_BSON document iterator");
+			return fail(false, "Failed to init BSON document iterator");
 		if (!bson_iter_next (&child))
 			return true;
 
@@ -360,14 +360,14 @@ bool Decoder::decode(bson_iter_t * iter, const tll::scheme::Field * field, Buf d
 	}
 	case Field::Union: {
 		if (t != BSON_TYPE_DOCUMENT)
-			return fail(false, "Invalid TLL_UTIL_BSON type for message: {}", t);
+			return fail(false, "Invalid BSON type for message: {}", t);
 
 		const uint8_t * array;
 		uint32_t len;
 		bson_iter_document(iter, &len, &array);
 		bson_iter_t child;
 		if (!bson_iter_init_from_data(&child, array, len))
-			return fail(false, "Failed to init TLL_UTIL_BSON document iterator");
+			return fail(false, "Failed to init BSON document iterator");
 		while (bson_iter_next (&child)) {
 			std::string_view key = { bson_iter_key_unsafe(&child), bson_iter_key_len(&child) };
 			auto ud = field->type_union;
