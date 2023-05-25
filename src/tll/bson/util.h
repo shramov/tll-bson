@@ -5,6 +5,16 @@
 
 namespace tll::bson::util {
 
+struct Settings
+{
+	std::string type_key;
+	std::string seq_key;
+	enum class Mode {
+		Flat, // {seq: 100, type: name, fields...}
+		Nested, // {seq: 100, name: {fields...}}
+	} mode = Mode::Flat;
+};
+
 template <typename I, typename Buf>
 std::string_view uint_to_string(I v, Buf &buf)
 {

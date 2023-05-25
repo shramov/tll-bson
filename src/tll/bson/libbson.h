@@ -13,6 +13,8 @@
 
 namespace tll::bson::libbson {
 
+using Settings = util::Settings;
+
 struct Encoder : public ErrorStack
 {
 	bson_t _bson = BSON_INITIALIZER;
@@ -21,14 +23,24 @@ struct Encoder : public ErrorStack
 
 	void init() {}
 
-	std::optional<tll::const_memory> encode(std::string_view type_key, std::string_view seq_key, const tll::scheme::Message * message, const tll_msg_t * msg)
+	std::optional<tll::const_memory> encode(const Settings &settings, const tll::scheme::Message * message, const tll_msg_t * msg)
 	{
 		bson_reinit(&_bson);
-		bson_append_utf8(&_bson, type_key.data(), type_key.size(), message->name, strlen(message->name));
-		if (seq_key.size())
-			bson_append_int64(&_bson, seq_key.data(), seq_key.size(), msg->seq);
-		if (!encode(&_bson, message, tll::make_view(*msg)))
-			return std::nullopt;
+		if (settings.seq_key.size())
+			bson_append_int64(&_bson, settings.seq_key.data(), settings.seq_key.size(), msg->seq);
+		if (settings.mode == Settings::Mode::Flat) {
+			bson_append_utf8(&_bson, settings.type_key.data(), settings.type_key.size(), message->name, strlen(message->name));
+			if (!encode(&_bson, message, tll::make_view(*msg)))
+				return std::nullopt;
+		} else {
+			bson_t child;
+			if (!bson_append_document_begin(&_bson, message->name, strlen(message->name), &child))
+				return fail(std::nullopt, "Failed to init nested document");
+			if (!encode(&child, message, tll::make_view(*msg)))
+				return std::nullopt;
+			if (!bson_append_document_end(&_bson, &child))
+				return fail(std::nullopt, "Failed to finish nested document");
+		}
 		return tll::const_memory { bson_get_data(&_bson), _bson.len };
 	}
 
@@ -157,7 +169,10 @@ bool Encoder::encode_list(bson_t * bson, const tll::scheme::Field * field, std::
 struct Decoder : public ErrorStack
 {
 	template <typename Buf>
-	bool decode(bson_iter_t * iter, const tll::scheme::Message * message, Buf buf, std::string_view type_key = "", std::string_view seq_key = "", bool root = false);
+	bool decode(bson_iter_t * iter, const tll::scheme::Message * message, Buf buf, const Settings &settings);
+
+	template <typename Buf>
+	bool decode(bson_iter_t * iter, const tll::scheme::Message * message, Buf buf);
 
 	template <typename Buf>
 	bool decode(bson_iter_t * iter, const tll::scheme::Field * field, Buf buf);
@@ -167,32 +182,74 @@ struct Decoder : public ErrorStack
 
 	template <typename T, typename Buf>
 	bool decode_scalar(bson_iter_t * iter, const tll::scheme::Field * field, Buf & buf);
+
+	std::optional<long long> decode_int(bson_iter_t * iter)
+	{
+			switch (bson_iter_type(iter)) {
+			case BSON_TYPE_INT32:
+				return bson_iter_int32_unsafe(iter);
+			case BSON_TYPE_INT64:
+				return bson_iter_int64_unsafe(iter);
+			default:
+				return std::nullopt;
+			}
+	}
+
+	std::optional<std::string_view> decode_string(bson_iter_t * iter)
+	{
+			uint32_t len;
+			auto ptr = bson_iter_utf8(iter, &len);
+			if (!ptr)
+				return std::nullopt;
+			return std::string_view(ptr, len);
+	}
+
+	const tll::scheme::Field * lookup(const tll::scheme::Message * message, const tll::scheme::Field * field, std::string_view name)
+	{
+		if (field && field->name == name)
+			return field;
+		for (auto f = message->fields; f; f = f->next) {
+			if (f->name == name)
+				return f;
+		}
+		return nullptr;
+	}
 };
 
 template <typename Buf>
-bool Decoder::decode(bson_iter_t * iter, const tll::scheme::Message * message, Buf buf, std::string_view type_key, std::string_view seq_key, bool root)
+bool Decoder::decode(bson_iter_t * iter, const tll::scheme::Message * message, Buf buf)
 {
-	auto field = message->fields;
+	const tll::scheme::Field * field = message->fields;
 	do {
 		std::string_view key = { bson_iter_key_unsafe(iter), bson_iter_key_len(iter) };
-		if (root) {
-			if (key == type_key)
-				continue;
-			else if (seq_key.size() && key == seq_key)
-				continue;
-		}
-		if (field->name != key) {
-			auto f = message->fields;
-			for (; f; f = f->next) {
-				if (f->name == key)
-					break;
-			}
-			if (!f)
-				continue;
-			field = f;
-		}
+		auto f = lookup(message, field, key);
+		if (!f)
+			continue;
+		field = f;
 		if (!decode(iter, field, buf.view(field->offset)))
 			return fail_field(false, field);
+		field = field->next;
+	} while (bson_iter_next(iter));
+	return true;
+}
+
+template <typename Buf>
+bool Decoder::decode(bson_iter_t * iter, const tll::scheme::Message * message, Buf buf, const Settings &settings)
+{
+	const tll::scheme::Field * field = message->fields;
+	do {
+		std::string_view key = { bson_iter_key_unsafe(iter), bson_iter_key_len(iter) };
+		if (key == settings.type_key)
+			continue;
+		else if (settings.seq_key.size() && key == settings.seq_key)
+			continue;
+		auto f = lookup(message, field, key);
+		if (!f)
+			continue;
+		field = f;
+		if (!decode(iter, field, buf.view(field->offset)))
+			return fail_field(false, field);
+		field = field->next;
 	} while (bson_iter_next(iter));
 	return true;
 }

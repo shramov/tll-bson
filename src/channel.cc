@@ -8,6 +8,7 @@
 
 #include <bson/bson.h>
 
+#include "tll/bson/util.h"
 #include "tll/bson/libbson.h"
 
 using namespace tll::bson;
@@ -16,8 +17,7 @@ class BSON : public tll::channel::Codec<BSON>
 {
 	using Base = tll::channel::Codec<BSON>;
 
-	std::string _type_key;
-	std::string _seq_key;
+	util::Settings _settings;
 
 	bson_t _bson_dec = BSON_INITIALIZER;
 	libbson::Encoder _enc;
@@ -66,15 +66,20 @@ class BSON : public tll::channel::Codec<BSON>
 	int _init_scheme(const tll::scheme::Scheme *s);
 	std::optional<tll::const_memory> _bson_encode(const tll_msg_t *msg, tll_msg_t * out);
 	std::optional<tll::const_memory> _bson_decode(const tll_msg_t *msg, tll_msg_t * out);
+
+	const tll::scheme::Message * _bson_decode_meta(bson_iter_t *iter, tll_msg_t * out);
 };
 
 int BSON::_init(const tll::Channel::Url &url, tll::Channel *parent)
 {
+	using Mode = util::Settings::Mode;
+
 	auto reader = channel_props_reader(url);
 
 	_enc.init();
-	_type_key = reader.getT<std::string>("type-key", "_tll_name");
-	_seq_key = reader.getT<std::string>("seq-key", "_tll_seq");
+	_settings.type_key = reader.getT<std::string>("type-key", "_tll_name");
+	_settings.seq_key = reader.getT<std::string>("seq-key", "_tll_seq");
+	_settings.mode = reader.getT("compose", Mode::Flat, {{"flat", Mode::Flat}, {"nested", Mode::Nested}});
 	if (!reader)
 		return _log.fail(EINVAL, "Invalid url: {}", reader.error());
 
@@ -96,7 +101,7 @@ std::optional<tll::const_memory> BSON::_bson_encode(const tll_msg_t *msg, tll_ms
 		return _log.fail(std::nullopt, "Message {} not found", msg->msgid);
 
 	_enc.error_clear();
-	if (auto r = _enc.encode(_type_key, _seq_key, message, msg); r)
+	if (auto r = _enc.encode(_settings, message, msg); r)
 		return r;
 	return _log.fail(std::nullopt, "Failed to encode message {} at {}: {}", message->name, _enc.format_stack(), _enc.error);
 }
@@ -107,49 +112,88 @@ std::optional<tll::const_memory> BSON::_bson_decode(const tll_msg_t *msg, tll_ms
 		return _log.fail(std::nullopt, "Failed to bind BSON buffer");
 	if (!bson_iter_init(&_bson_iter, &_bson_dec))
 		return _log.fail(std::nullopt, "Failed to bind BSON iterator");
-	bool reset = false, seq = _seq_key.size() == 0;
 	const tll::scheme::Message * message = nullptr;
-	while (bson_iter_next(&_bson_iter)) {
-		std::string_view key = { bson_iter_key_unsafe(&_bson_iter), bson_iter_key_len(&_bson_iter) };
-		if (key == _type_key) {
-			if (message)
-				return _log.fail(std::nullopt, "Duplicate key {}", key);
-			uint32_t len;
-			auto ptr = bson_iter_utf8(&_bson_iter, &len);
-			if (!ptr)
-				return _log.fail(std::nullopt, "Non-string type key {}", key);
-			std::string name = { ptr, len };
-			message = _scheme->lookup(name);
-			if (!message)
-				return _log.fail(std::nullopt, "Message '{}' not found", name);
-			out->msgid = message->msgid;
-			if (seq)
-				break;
-		} else if (_seq_key.size() && key == _seq_key) {
-			switch (bson_iter_type(&_bson_iter)) {
-			case BSON_TYPE_INT32:
-				out->seq = bson_iter_int32_unsafe(&_bson_iter);
-				break;
-			case BSON_TYPE_INT64:
-				out->seq = bson_iter_int64_unsafe(&_bson_iter);
-				break;
-			default:
-				return _log.fail(std::nullopt, "Non-integer seq key {}: {}", key, bson_iter_type(&_bson_iter));
-			}
-			seq = true;
-			if (message)
-				break;
-		} else
-			reset = true;
+	switch (_settings.mode) {
+	case util::Settings::Mode::Flat: {
+		bool reset = false, seq = _settings.seq_key.empty();
+		while (bson_iter_next(&_bson_iter)) {
+			std::string_view key = { bson_iter_key_unsafe(&_bson_iter), bson_iter_key_len(&_bson_iter) };
+			if (key == _settings.type_key) {
+				if (message)
+					return _log.fail(std::nullopt, "Duplicate key {}", key);
+				if (auto name = _dec.decode_string(&_bson_iter); name) {
+					message = _scheme->lookup(*name);
+					if (!message)
+						return _log.fail(std::nullopt, "Message '{}' not found", *name);
+				} else
+					return _log.fail(std::nullopt, "Non-string type key {}", key);
+				out->msgid = message->msgid;
+				if (seq)
+					break;
+			} else if (_settings.seq_key.size() && key == _settings.seq_key) {
+				if (auto r = _dec.decode_int(&_bson_iter); r)
+					out->seq = *r;
+				else
+					return _log.fail(std::nullopt, "Non-integer seq key {}: {}", key, bson_iter_type(&_bson_iter));
+				seq = true;
+				if (message)
+					break;
+			} else
+				reset = true;
+		}
+		if (!message)
+			return _log.fail(std::nullopt, "No type key {} in BSON", _settings.type_key);
+		if (reset && bson_iter_init(&_bson_iter, &_bson_dec))
+			return _log.fail(std::nullopt, "Failed to bind BSON iterator");
+		_buffer_dec.resize(0);
+		_buffer_dec.resize(message->size);
+		_dec.error_clear();
+		if (!_dec.decode(&_bson_iter, message, tll::make_view(_buffer_dec), _settings))
+			return _log.fail(std::nullopt, "Failed to decode BSON message at {}: {}", _dec.format_stack(), _dec.error);
 	}
-	if (!message)
-		return _log.fail(std::nullopt, "No type key {} in BSON", _type_key);
-	if (reset && bson_iter_init(&_bson_iter, &_bson_dec))
-		return _log.fail(std::nullopt, "Failed to bind BSON iterator");
-	_buffer_dec.resize(0);
-	_buffer_dec.resize(message->size);
-	if (!_dec.decode(&_bson_iter, message, tll::make_view(_buffer_dec), _type_key, _seq_key, true))
-		return _log.fail(std::nullopt, "Failed to decode BSON message at {}: {}", _dec.format_stack(), _dec.error);
+	case util::Settings::Mode::Nested: {
+		while (bson_iter_next(&_bson_iter)) {
+			std::string_view key = { bson_iter_key_unsafe(&_bson_iter), bson_iter_key_len(&_bson_iter) };
+			if (_settings.seq_key.size() && key == _settings.seq_key) {
+				if (auto r = _dec.decode_int(&_bson_iter); r)
+					out->seq = *r;
+				else
+					return _log.fail(std::nullopt, "Non-integer seq key {}: {}", key, bson_iter_type(&_bson_iter));
+				if (message)
+					break;
+			} else if (message)
+				continue;
+			auto m = _scheme->lookup(key);
+			if (!m)
+				continue;
+			if (m->msgid == 0)
+				continue;
+			out->msgid = m->msgid;
+			message = m;
+
+			if (bson_iter_type(&_bson_iter) != BSON_TYPE_DOCUMENT)
+				return _log.fail(std::nullopt, "Non-document message '{}' key: {}", key, bson_iter_type(&_bson_iter));
+
+			_buffer_dec.resize(0);
+			_buffer_dec.resize(message->size);
+			_dec.error_clear();
+
+			const uint8_t * array;
+			uint32_t len;
+			bson_iter_document(&_bson_iter, &len, &array);
+			bson_iter_t child;
+			if (!bson_iter_init_from_data(&child, array, len))
+				return _log.fail(std::nullopt, "Failed to init BSON document iterator");
+			if (!bson_iter_next (&child))
+				continue;
+
+			if (!_dec.decode(&child, message, tll::make_view(_buffer_dec)))
+				return _log.fail(std::nullopt, "Failed to decode BSON message at {}: {}", _dec.format_stack(), _dec.error);
+		}
+		if (!message)
+			return _log.fail(std::nullopt, "No known type in BSON");
+	}
+	}
 	return tll::const_memory { _buffer_dec.data(), _buffer_dec.size() };
 }
 

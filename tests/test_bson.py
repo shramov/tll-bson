@@ -66,3 +66,42 @@ def test_field(context, t, value):
     assert [(m.msgid, m.seq) for m in c.result] == [(10, 200)]
 
     assert c.unpack(c.result[-1]).as_dict() == {'f0': value}
+
+def test_nested(context):
+    r = Accum('direct://', name='raw', context=context)
+    r.open()
+
+    scheme = '''yamls://
+- name: M0
+  id: 10
+  fields:
+    - {name: f0, type: int32}
+- name: M1
+  id: 20
+  fields:
+    - {name: f0, type: string}
+'''
+    c = Accum('bson+direct://;direct.dump=text+hex;name=bson', master=r, scheme=scheme, context=context, compose='nested')
+    c.open()
+
+    assert c.state == c.State.Active
+
+    c.post({'f0': 123}, name='M0', seq=100)
+    d = bson.decode(r.result[-1].data)
+    assert d == {'_tll_seq': 100, 'M0': {'f0': 123}}
+
+    d['_tll_seq'] = 200
+    r.post(bson.encode(d))
+
+    assert [(m.msgid, m.seq) for m in c.result] == [(10, 200)]
+    assert c.unpack(c.result[-1]).as_dict() == {'f0': 123}
+
+    c.post({'f0': 'string'}, name='M1', seq=110)
+    d = bson.decode(r.result[-1].data)
+    assert d == {'_tll_seq': 110, 'M1': {'f0': 'string'}}
+
+    d['_tll_seq'] = 220
+    r.post(bson.encode(d))
+
+    assert [(m.msgid, m.seq) for m in c.result] == [(10, 200), (20, 220)]
+    assert c.unpack(c.result[-1]).as_dict() == {'f0': 'string'}
