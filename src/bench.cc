@@ -63,7 +63,7 @@ void fill_simple(tll_msg_t &msg, Buf &buf)
 	msg.msgid = simple.meta_id();
 }
 
-void bench(tll::channel::Context &ctx, std::string_view proto)
+void bench(tll::channel::Context &ctx, std::string_view proto, std::string_view encoder = "")
 {
 	std::vector<char> buf;
 	tll_msg_t msg = {};
@@ -73,6 +73,8 @@ void bench(tll::channel::Context &ctx, std::string_view proto)
 	url.proto(proto);
 	url.set("scheme", scheme_string);
 	url.set("name", "codec");
+	if (encoder.size())
+		url.set("encoder", encoder);
 
 	auto c = ctx.channel(url);
 	if (!c)
@@ -104,8 +106,10 @@ int main()
 	tll::bench::prewarm(100ms);
 	bench(ctx, "null");
 	bench(ctx, "echo");
-	bench(ctx, "bson+null");
+	bench(ctx, "bson+null", "libbson");
+	bench(ctx, "bson+null", "cppbson");
 	bench(ctx, "json+null");
-	bench(ctx, "bson+echo");
+	bench(ctx, "bson+echo", "libbson");
+	bench(ctx, "bson+echo", "cppbson");
 	bench(ctx, "json+echo");
 }

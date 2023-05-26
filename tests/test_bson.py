@@ -8,6 +8,7 @@ from decimal import Decimal
 
 from tll.test_util import Accum
 
+@pytest.mark.parametrize("encoder", ["libbson", "cppbson"])
 @pytest.mark.parametrize("t,value",
         [('int8', -123),
         ('int16', -12323),
@@ -32,7 +33,7 @@ from tll.test_util import Accum
         ('"Union[4]"', [{'i8': 10}, {'s': 'string'}]),
         ('"*Union"', [{'i8': 10}, {'s': 'string'}]),
         ])
-def test_field(context, t, value):
+def test_field(context, encoder, t, value):
     r = Accum('direct://', name='raw', context=context)
     r.open()
 
@@ -51,7 +52,7 @@ def test_field(context, t, value):
   fields:
     - {{name: f0, type: {t}}}
 '''
-    c = Accum('bson+direct://;direct.dump=text+hex;name=bson', master=r, scheme=scheme, context=context)
+    c = Accum('bson+direct://;direct.dump=text+hex;name=bson', master=r, scheme=scheme, context=context, encoder=encoder)
     c.open()
 
     assert c.state == c.State.Active
@@ -67,7 +68,8 @@ def test_field(context, t, value):
 
     assert c.unpack(c.result[-1]).as_dict() == {'f0': value}
 
-def test_nested(context):
+@pytest.mark.parametrize("encoder", ["libbson", "cppbson"])
+def test_nested(context, encoder):
     r = Accum('direct://', name='raw', context=context)
     r.open()
 
@@ -81,7 +83,7 @@ def test_nested(context):
   fields:
     - {name: f0, type: string}
 '''
-    c = Accum('bson+direct://;direct.dump=text+hex;name=bson', master=r, scheme=scheme, context=context, compose='nested')
+    c = Accum('bson+direct://;direct.dump=text+hex;name=bson', master=r, scheme=scheme, context=context, compose='nested', encoder=encoder)
     c.open()
 
     assert c.state == c.State.Active

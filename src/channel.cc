@@ -10,6 +10,7 @@
 
 #include "tll/bson/util.h"
 #include "tll/bson/libbson.h"
+#include "tll/bson/encoder.h"
 
 using namespace tll::bson;
 
@@ -19,8 +20,11 @@ class BSON : public tll::channel::Codec<BSON>
 
 	util::Settings _settings;
 
+	enum class Encoder { Lib, CPP } _enc_type = Encoder::Lib;
+
 	bson_t _bson_dec = BSON_INITIALIZER;
-	libbson::Encoder _enc;
+	cppbson::Encoder _enc_cpp;
+	libbson::Encoder _enc_lib;
 	libbson::Decoder _dec;
 	bson_iter_t _bson_iter;
 
@@ -76,12 +80,17 @@ int BSON::_init(const tll::Channel::Url &url, tll::Channel *parent)
 
 	auto reader = channel_props_reader(url);
 
-	_enc.init();
+	_enc_type = reader.getT("encoder", Encoder::Lib, {{"libbson", Encoder::Lib}, {"cppbson", Encoder::CPP}});
 	_settings.type_key = reader.getT<std::string>("type-key", "_tll_name");
 	_settings.seq_key = reader.getT<std::string>("seq-key", "_tll_seq");
 	_settings.mode = reader.getT("compose", Mode::Flat, {{"flat", Mode::Flat}, {"nested", Mode::Nested}});
 	if (!reader)
 		return _log.fail(EINVAL, "Invalid url: {}", reader.error());
+
+	if (_enc_type == Encoder::Lib)
+		_enc_lib.init();
+	else
+		_enc_cpp.init();
 
 	return Base::_init(url, parent);
 }
@@ -100,10 +109,17 @@ std::optional<tll::const_memory> BSON::_bson_encode(const tll_msg_t *msg, tll_ms
 	if (!message)
 		return _log.fail(std::nullopt, "Message {} not found", msg->msgid);
 
-	_enc.error_clear();
-	if (auto r = _enc.encode(_settings, message, msg); r)
-		return r;
-	return _log.fail(std::nullopt, "Failed to encode message {} at {}: {}", message->name, _enc.format_stack(), _enc.error);
+	if (_enc_type == Encoder::Lib) {
+		_enc_lib.error_clear();
+		if (auto r = _enc_lib.encode(_settings, message, msg); r)
+			return r;
+		return _log.fail(std::nullopt, "Failed to encode message {} at {}: {}", message->name, _enc_lib.format_stack(), _enc_lib.error);
+	} else {
+		_enc_cpp.error_clear();
+		if (auto r = _enc_cpp.encode(_settings, message, msg); r)
+			return r;
+		return _log.fail(std::nullopt, "Failed to encode message {} at {}: {}", message->name, _enc_cpp.format_stack(), _enc_cpp.error);
+	}
 }
 
 std::optional<tll::const_memory> BSON::_bson_decode(const tll_msg_t *msg, tll_msg_t * out)
