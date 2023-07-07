@@ -7,6 +7,14 @@ namespace tll::bson {
 
 struct ErrorStack
 {
+
+	template <typename... Args>
+#if FMT_VERSION < 80000
+	using format_string = std::string_view;
+#else
+	using format_string = fmt::format_string<Args...>;
+#endif
+
 	/// Error message
 	std::string error;
 	/// Error stack, field pointer or array index
@@ -18,9 +26,9 @@ struct ErrorStack
 		error_stack.clear();
 	}
 
-	template <typename R, typename Fmt, typename... Args>
+	template <typename R, typename... Args>
 	[[nodiscard]]
-	R fail(R err, Fmt format, Args && ... args)
+	R fail(R err, format_string<Args...> format, Args && ... args)
 	{
 		error = fmt::format(format, std::forward<Args>(args)...);
 		error_stack.clear();
