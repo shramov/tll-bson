@@ -9,7 +9,7 @@
 #include <tll/util/bench.h>
 #include <tll/util/time.h>
 
-extern "C" tll_channel_module_t * channel_module();
+extern "C" tll_channel_module_t * tll_channel_module();
 
 static constexpr auto count = 100000u;
 
@@ -95,9 +95,9 @@ int main()
 	auto ctx = tll::channel::Context(ctxcfg);
 	ctx.reg(&Echo::impl);
 
-	auto m = channel_module();
+	auto m = tll_channel_module();
 	if (m->init)
-		m->init(m, ctx);
+		m->init(m, ctx, nullptr);
 	if (m->impl) {
 		for (auto i = m->impl; *i; i++)
 			ctx.reg(*i);
