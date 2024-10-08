@@ -3,6 +3,10 @@
 #ifndef _TLL_UTIL_BSON_CPPBSON_H
 #define _TLL_UTIL_BSON_CPPBSON_H
 
+#include <array>
+#include <cstdint>
+#include <string_view>
+
 namespace tll::bson::cppbson {
 
 struct Memory

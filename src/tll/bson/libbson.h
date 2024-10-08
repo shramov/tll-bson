@@ -5,7 +5,9 @@
 
 #include <bson/bson.h>
 
+#include <tll/channel.h>
 #include <tll/scheme.h>
+#include <tll/scheme/util.h>
 #include <tll/util/memoryview.h>
 
 #include "tll/bson/error-stack.h"

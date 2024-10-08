@@ -3,7 +3,9 @@
 #ifndef _TLL_UTIL_BSON_ENCODER_H
 #define _TLL_UTIL_BSON_ENCODER_H
 
+#include <tll/channel.h>
 #include <tll/scheme.h>
+#include <tll/scheme/util.h>
 #include <tll/util/memoryview.h>
 
 #include "tll/bson/cppbson.h"
