@@ -14,6 +14,8 @@
 
 using namespace tll::bson;
 
+constexpr auto format_as(bson_type_t v) noexcept { return static_cast<int>(v); }
+
 class BSON : public tll::channel::Codec<BSON>
 {
 	using Base = tll::channel::Codec<BSON>;
