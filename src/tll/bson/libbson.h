@@ -366,7 +366,6 @@ bool Decoder::decode(bson_iter_t * iter, const tll::scheme::Field * field, Buf d
 	}
 	case Field::Pointer: {
 		tll::scheme::generic_offset_ptr_t ptr = {};
-		ptr.offset = data.size();
 		if (field->sub_type == Field::ByteString) {
 			if (t != BSON_TYPE_UTF8)
 				return fail(false, "Invalid BSON type for string: {}", t);
@@ -374,9 +373,9 @@ bool Decoder::decode(bson_iter_t * iter, const tll::scheme::Field * field, Buf d
 			auto str = bson_iter_utf8_unsafe(iter, &len);
 			ptr.size = len + 1;
 			ptr.entity = 1;
-			tll::scheme::write_pointer(field, data, ptr);
+			if (tll::scheme::alloc_pointer(field, data, ptr))
+				return fail(false, "Failed to allocate pointer of size {}", ptr.size);
 			auto view = data.view(ptr.offset);
-			view.resize(ptr.size);
 			memcpy(view.data(), str, len);
 			*view.view(len).template dataT<char>() = '\0';
 			return true;
@@ -395,9 +394,9 @@ bool Decoder::decode(bson_iter_t * iter, const tll::scheme::Field * field, Buf d
 		auto af = field->type_ptr;
 		ptr.entity = af->size;
 
-		tll::scheme::write_pointer(field, data, ptr);
+		if (tll::scheme::alloc_pointer(field, data, ptr))
+			return fail(false, "Failed to allocate pointer of size {}", ptr.size);
 		auto view = data.view(ptr.offset);
-		view.resize(ptr.size * ptr.entity);
 
 		bson_iter_init_from_data(&child, array, len);
 		return decode_list(&child, af, ptr.entity, view);
