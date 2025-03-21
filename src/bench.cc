@@ -69,6 +69,14 @@ void bench(tll::channel::Context &ctx, std::string_view proto, std::string_view 
 	tll_msg_t msg = {};
 	fill_simple(msg, buf);
 
+	std::string name { proto };
+	if (auto sep = proto.find('+'); sep != proto.npos) {
+		if (encoder.size())
+			name = fmt::format("{}{}", encoder, proto.substr(sep));
+		else
+			name = "   " + name;
+	}
+
 	tll::Channel::Url url;
 	url.proto(proto);
 	url.set("scheme", scheme_string);
@@ -84,7 +92,7 @@ void bench(tll::channel::Context &ctx, std::string_view proto, std::string_view 
 		return;
 
 	c->post(&msg);
-	tll::bench::timeit(count, proto, tll_channel_post, c.get(), &msg, 0);
+	tll::bench::timeit(count, name, tll_channel_post, c.get(), &msg, 0);
 }
 
 int main()
