@@ -7,7 +7,7 @@ project('tll-bson', 'cpp'
 include = [include_directories('src')]
 
 fmt = dependency('fmt')
-bson = dependency('libbson-1.0')
+bson = dependency('bson2', 'libbson-1.0')
 tll = dependency('tll')
 
 module = shared_library('tll-bson'
